@@ -20,7 +20,7 @@ jobs:
 
       - name: Build Docker Image
         run: |
-          docker build -t fastapi-app:latest .
+          docker build -t fastapi-hello:latest .
 
       - name: Run Unit Tests
         run: |
