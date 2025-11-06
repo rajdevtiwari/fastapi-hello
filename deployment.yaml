@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-helloworld
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi-helloworld
+  template:
+    metadata:
+      labels:
+        app: fastapi-helloworld
+    spec:
+      containers:
+        - name: fastapi-helloworld
+          image: ghcr.io/YOUR_GITHUB_USERNAME/fastapi-helloworld:latest
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-helloworld-service
+spec:
+  selector:
+    app: fastapi-helloworld
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: NodePort
