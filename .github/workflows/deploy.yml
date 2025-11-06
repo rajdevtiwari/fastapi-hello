@@ -1,4 +1,4 @@
-name: 🚀 CI/CD Deploy FastAPI
+name: Deploy FastAPI App to K8s
 
 on:
   push:
@@ -9,19 +9,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-    - name: Set up SSH key
+    - name: Setup SSH
       uses: webfactory/ssh-agent@v0.8.0
       with:
         ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-    - name: Deploy to Server via SSH
+    - name: Add remote host to known_hosts
       run: |
-        ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.SERVER_IP }} << 'EOF'
-          cd /home/ubuntu/fastapi-hello
+        ssh-keyscan -H 192.168.101.164 >> ~/.ssh/known_hosts
+
+    - name: Deploy to remote server
+      run: |
+        ssh root@192.168.101.164 << 'EOF'
+          cd /home/ceekh/fastapi-hello
           git pull origin main
-          docker-compose down
-          docker-compose up -d --build
+          docker build -t fastapi-hello .
+          docker stop fastapi-hello || true
+          docker rm fastapi-hello || true
+          docker run -d -p 8000:8000 fastapi-hello
         EOF
