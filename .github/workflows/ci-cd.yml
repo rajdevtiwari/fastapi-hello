@@ -1,15 +1,9 @@
-name: CI/CD (self-hosted)
+name: CI-CD (self-hosted)
 
 on:
   push:
     branches:
       - main
-
-env:
-  IMAGE_BASE: rajdevtiwari/fastapi-hello
-  NAMESPACE: fastapi
-  DEPLOYMENT: fastapi-deployment
-  CONTAINER: fastapi
 
 jobs:
   build-test-deploy:
@@ -17,70 +11,65 @@ jobs:
     environment: production
 
     steps:
-    # 1️⃣ Checkout repository
-    - name: Checkout
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    # 2️⃣ Setup Python
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
         python-version: '3.11'
 
-    # 3️⃣ Install dependencies
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    # 4️⃣ Run tests
     - name: Run tests
       env:
         PYTHONPATH: ${{ github.workspace }}
-      run: |
-        pytest -q
+      run: pytest -q
 
-    # 5️⃣ Build Docker image
-    - name: Build Docker image
+    # Verify and prepare Kubernetes context
+    - name: Verify kubeconfig and minikube
       run: |
+        echo "KUBECONFIG=$HOME/.kube/config"
+        if [ ! -f "$HOME/.kube/config" ]; then
+          echo "❌ kubeconfig not found!"
+          exit 1
+        fi
+        echo "✅ kubeconfig found. Current context:"
+        kubectl config current-context || true
+        echo "Checking Minikube status..."
+        minikube status || echo "⚠️ Minikube not running; trying to start..."
+        minikube start --driver=docker || true
+        kubectl get nodes
+
+    - name: Build Docker image locally
+      run: |
+        IMAGE_NAME="fastapi-hello"
         IMAGE_TAG=${{ github.sha }}
-        docker build -t $IMAGE_BASE:$IMAGE_TAG .
-        docker tag $IMAGE_BASE:$IMAGE_TAG $IMAGE_BASE:latest
-        echo "Built and tagged $IMAGE_BASE:$IMAGE_TAG"
+        docker build -t $IMAGE_NAME:$IMAGE_TAG .
+        docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest
+        echo "✅ Image built: $IMAGE_NAME:$IMAGE_TAG"
 
-    # 6️⃣ Load image into Minikube (self-hosted runner)
     - name: Load image into Minikube
       run: |
+        IMAGE_NAME="fastapi-hello"
         IMAGE_TAG=${{ github.sha }}
-        minikube image load $IMAGE_BASE:$IMAGE_TAG
-        echo "Image loaded into Minikube: $IMAGE_BASE:$IMAGE_TAG"
+        echo "📦 Loading image into Minikube..."
+        minikube image load $IMAGE_NAME:$IMAGE_TAG
 
-    # 7️⃣ Prepare kubeconfig for the runner
-    - name: Setup kubeconfig for runner
+    - name: Deploy to Kubernetes
       run: |
-        mkdir -p $HOME/.kube
-        cp /home/runner/.kube/config $HOME/.kube/config
-        chmod 600 $HOME/.kube/config
-        kubectl config use-context minikube
+        NAMESPACE=fastapi
+        DEPLOYMENT=fastapi-deployment
+        CONTAINER=fastapi
+        IMAGE="fastapi-hello:${{ github.sha }}"
 
-    # 8️⃣ Update deployment image and rollout
-    - name: Update Kubernetes deployment image
-      run: |
-        IMAGE_TAG=${{ github.sha }}
-        IMAGE="$IMAGE_BASE:$IMAGE_TAG"
-
-        echo "Updating deployment image to: $IMAGE"
+        echo "🚀 Updating deployment with image: $IMAGE"
         kubectl -n $NAMESPACE set image deployment/$DEPLOYMENT $CONTAINER=$IMAGE --record
+        kubectl -n $NAMESPACE rollout status deployment/$DEPLOYMENT --timeout=120s
 
-        echo "Waiting for rollout to complete..."
-        kubectl -n $NAMESPACE rollout status deployment/$DEPLOYMENT --timeout=180s
-
-    # 9️⃣ Health check after rollout
-    - name: Health check
+    - name: Confirm service availability
       run: |
-        echo "Checking pod and service status..."
-        kubectl -n $NAMESPACE get pods -o wide
-        kubectl -n $NAMESPACE get svc -o wide
-        echo "Last 10 pod logs for verification:"
-        kubectl -n $NAMESPACE logs -l app=$CONTAINER --tail=10 || echo "No logs yet"
-
+        kubectl -n fastapi get svc fastapi-svc -o wide
