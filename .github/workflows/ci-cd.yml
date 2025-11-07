@@ -11,26 +11,40 @@ jobs:
     environment: production
 
     steps:
+    # ------------------------------
+    # 1️⃣ Checkout code
+    # ------------------------------
     - name: 🧾 Checkout code
       uses: actions/checkout@v4
 
+    # ------------------------------
+    # 2️⃣ Setup Python
+    # ------------------------------
     - name: 🐍 Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
 
+    # ------------------------------
+    # 3️⃣ Install dependencies
+    # ------------------------------
     - name: 📦 Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    # ------------------------------
+    # 4️⃣ Run tests
+    # ------------------------------
     - name: 🧪 Run tests
       env:
         PYTHONPATH: ${{ github.workspace }}
       run: pytest -q
 
-    # 👇 Add this step here
-    - name: ⚙️ Verify kubeconfig (use real cluster)
+    # ------------------------------
+    # 5️⃣ Verify kubeconfig (real cluster)
+    # ------------------------------
+    - name: ⚙️ Verify kubeconfig (real cluster)
       run: |
         export KUBECONFIG=/home/ceekh/.kube/config
         echo "✅ Using kubeconfig from $KUBECONFIG"
@@ -41,6 +55,9 @@ jobs:
         kubectl config current-context
         kubectl get nodes
 
+    # ------------------------------
+    # 6️⃣ Build Docker image
+    # ------------------------------
     - name: 🐳 Build Docker image locally
       run: |
         cd $GITHUB_WORKSPACE
@@ -50,13 +67,9 @@ jobs:
         docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest
         echo "✅ Image built: $IMAGE_NAME:$IMAGE_TAG"
 
-    - name: 📦 Load image into Minikube
-      run: |
-        IMAGE_NAME="fastapi-hello"
-        IMAGE_TAG=${{ github.sha }}
-        echo "📦 Loading image into Minikube..."
-        minikube image load $IMAGE_NAME:$IMAGE_TAG
-
+    # ------------------------------
+    # 7️⃣ Deploy to Kubernetes
+    # ------------------------------
     - name: 🚀 Deploy to Kubernetes
       run: |
         cd $GITHUB_WORKSPACE
@@ -73,6 +86,9 @@ jobs:
         echo "🚀 Ensuring namespace exists..."
         kubectl get ns $NAMESPACE || kubectl create ns $NAMESPACE
 
+        echo "⚙️ Deleting old deployment if selector changed..."
+        kubectl -n $NAMESPACE delete deployment $DEPLOYMENT --ignore-not-found
+
         echo "📦 Applying manifests..."
         kubectl apply -f k8s/ -n $NAMESPACE
 
@@ -80,6 +96,17 @@ jobs:
         kubectl -n $NAMESPACE set image deployment/$DEPLOYMENT $CONTAINER=$IMAGE --record || true
         kubectl -n $NAMESPACE rollout status deployment/$DEPLOYMENT --timeout=120s || true
 
+    # ------------------------------
+    # 8️⃣ Confirm service and print access URL
+    # ------------------------------
     - name: 🔍 Confirm service availability
       run: |
-        kubectl -n fastapi get all -o wide
+        NAMESPACE=fastapi
+        echo "📊 Current resources:"
+        kubectl -n $NAMESPACE get all -o wide
+
+        echo "🌐 Checking NodePort URL..."
+        NODE_PORT=$(kubectl -n $NAMESPACE get svc fastapi-svc -o jsonpath='{.spec.ports[0].nodePort}')
+        NODE_IP=$(hostname -I | awk '{print $1}')
+        echo "✅ Your app should be available at:"
+        echo "👉 http://$NODE_IP:$NODE_PORT"
