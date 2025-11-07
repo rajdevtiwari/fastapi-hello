@@ -1,0 +1,58 @@
+name: CI-CD (self-hosted)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-test-deploy:
+    runs-on: self-hosted
+    environment: production
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run tests
+      run: |
+        pytest -q
+
+    - name: Build Docker image
+      run: |
+        IMAGE_NAME="rajdevtiwari/fastapi-hello:${{ github.sha }}"
+        docker build -t "$IMAGE_NAME" .
+        # Also tag as :latest for convenience
+        docker tag "$IMAGE_NAME" "rajdevtiwari/fastapi-hello:latest"
+
+    - name: Update k8s deployment image and rollout
+      env:
+        KUBECONFIG: ${{ secrets.RUNNER_KUBECONFIG }}
+      run: |
+        # If you kept kubeconfig in a file on the runner, you can skip using secret and ensure ~/.kube/config is present.
+        # Replace namespace if needed
+        NAMESPACE=fastapi
+        DEPLOYMENT=fastapi-deployment
+        CONTAINER=fastapi
+        IMAGE="rajdevtiwari/fastapi-hello:${{ github.sha }}"
+
+        # Update deployment image. This command will instruct kubelet to use local image if imagePullPolicy: IfNotPresent
+        kubectl -n $NAMESPACE set image deployment/$DEPLOYMENT $CONTAINER=$IMAGE --record
+
+        # Wait for rollout
+        kubectl -n $NAMESPACE rollout status deployment/$DEPLOYMENT --timeout=120s
+
+    - name: Confirm service
+      run: |
+        # Print service so you can access via nodePort
+        kubectl -n fastapi get svc fastapi-svc -o wide

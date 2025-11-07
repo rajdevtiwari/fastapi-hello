@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-deployment
+  labels:
+    app: fastapi-hello
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi-hello
+  template:
+    metadata:
+      labels:
+        app: fastapi-hello
+    spec:
+      containers:
+      - name: fastapi
+        image: rajdevtiwari/fastapi-hello:latest # workflow will replace this image tag dynamically
+        ports:
+        - containerPort: 8000
+        imagePullPolicy: IfNotPresent
