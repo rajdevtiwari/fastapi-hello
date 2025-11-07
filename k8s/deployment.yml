@@ -3,20 +3,22 @@ kind: Deployment
 metadata:
   name: fastapi-deployment
   labels:
-    app: fastapi-hello
+    app: fastapi
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: fastapi-hello
+      app: fastapi
   template:
     metadata:
       labels:
-        app: fastapi-hello
+        app: fastapi
     spec:
       containers:
       - name: fastapi
-        image: rajdevtiwari/fastapi-hello:latest # workflow will replace this image tag dynamically
+        image: fastapi-hello:latest
+        imagePullPolicy: IfNotPresent   # ✅ Important for Minikube local image
         ports:
-        - containerPort: 8000
-        imagePullPolicy: IfNotPresent
+        - containerPort: 8000           # ✅ Match your uvicorn port
+        command: ["uvicorn"]
+        args: ["main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -3,10 +3,10 @@ kind: Service
 metadata:
   name: fastapi-svc
 spec:
-  selector:
-    app: fastapi-hello
   type: NodePort
+  selector:
+    app: fastapi
   ports:
     - port: 8000
       targetPort: 8000
-      nodePort: 30080
+      nodePort: 30080   # You can access it at http://<minikube-ip>:30080
