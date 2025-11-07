@@ -8,4 +8,4 @@ async def test_root():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
         response = await ac.get("/")
     assert response.status_code == 200
-    assert response.json() == {"message": "Hello World from FastAPI#4!"}
+    assert response.json() == {"message": "Hello World from FastAPI Version#4!"}
