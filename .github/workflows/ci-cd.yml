@@ -29,7 +29,7 @@ jobs:
         PYTHONPATH: ${{ github.workspace }}
       run: pytest -q
 
-    # Verify and prepare Kubernetes context
+    # ✅ Verify and prepare Kubernetes context
     - name: Verify kubeconfig and minikube
       run: |
         echo "KUBECONFIG=$HOME/.kube/config"
@@ -37,12 +37,28 @@ jobs:
           echo "❌ kubeconfig not found!"
           exit 1
         fi
+
         echo "✅ kubeconfig found. Current context:"
         kubectl config current-context || true
+
         echo "Checking Minikube status..."
         minikube status || echo "⚠️ Minikube not running; trying to start..."
         minikube start --driver=docker || true
+
+        echo "✅ Kubernetes Nodes:"
         kubectl get nodes
+
+    # ✅ Ensure namespace exists before deployment
+    - name: Ensure fastapi namespace exists
+      run: |
+        NAMESPACE=fastapi
+        if ! kubectl get namespace $NAMESPACE >/dev/null 2>&1; then
+          echo "🧩 Creating namespace $NAMESPACE..."
+          kubectl create namespace $NAMESPACE
+        else
+          echo "✅ Namespace $NAMESPACE already exists."
+        fi
+        kubectl get ns
 
     - name: Build Docker image locally
       run: |
@@ -67,9 +83,14 @@ jobs:
         IMAGE="fastapi-hello:${{ github.sha }}"
 
         echo "🚀 Updating deployment with image: $IMAGE"
-        kubectl -n $NAMESPACE set image deployment/$DEPLOYMENT $CONTAINER=$IMAGE --record
+        kubectl -n $NAMESPACE set image deployment/$DEPLOYMENT $CONTAINER=$IMAGE || {
+          echo "⚠️ Deployment not found, applying manifests instead..."
+          kubectl -n $NAMESPACE apply -f k8s/
+        }
+
         kubectl -n $NAMESPACE rollout status deployment/$DEPLOYMENT --timeout=120s
 
     - name: Confirm service availability
       run: |
+        echo "🌐 Checking service in namespace fastapi..."
         kubectl -n fastapi get svc fastapi-svc -o wide
