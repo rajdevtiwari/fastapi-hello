@@ -7,4 +7,4 @@ async def test_root():
     async with AsyncClient(app=app, base_url="http://test") as ac:
         r = await ac.get("/")
     assert r.status_code == 200
-    assert r.json() == {"message": "Hello from FastAPI!"}
+    assert r.json() == {"message": "Hello from FastAPI#2!"}
