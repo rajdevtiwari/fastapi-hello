@@ -11,86 +11,77 @@ jobs:
     environment: production
 
     steps:
-    - name: Checkout code
+    - name: 🧾 Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
+    - name: 🐍 Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
 
-    - name: Install dependencies
+    - name: 📦 Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run tests
+    - name: 🧪 Run tests
       env:
         PYTHONPATH: ${{ github.workspace }}
       run: pytest -q
 
-    # ✅ Verify and prepare Kubernetes context
-    - name: Verify kubeconfig and minikube
+    - name: ⚙️ Verify kubeconfig and Minikube
       run: |
         echo "KUBECONFIG=$HOME/.kube/config"
         if [ ! -f "$HOME/.kube/config" ]; then
           echo "❌ kubeconfig not found!"
           exit 1
         fi
-
-        echo "✅ kubeconfig found. Current context:"
+        echo "✅ kubeconfig found."
         kubectl config current-context || true
-
         echo "Checking Minikube status..."
         minikube status || echo "⚠️ Minikube not running; trying to start..."
         minikube start --driver=docker || true
-
-        echo "✅ Kubernetes Nodes:"
         kubectl get nodes
 
-    # ✅ Ensure namespace exists before deployment
-    - name: Ensure fastapi namespace exists
+    - name: 🐳 Build Docker image locally
       run: |
-        NAMESPACE=fastapi
-        if ! kubectl get namespace $NAMESPACE >/dev/null 2>&1; then
-          echo "🧩 Creating namespace $NAMESPACE..."
-          kubectl create namespace $NAMESPACE
-        else
-          echo "✅ Namespace $NAMESPACE already exists."
-        fi
-        kubectl get ns
-
-    - name: Build Docker image locally
-      run: |
+        cd $GITHUB_WORKSPACE
         IMAGE_NAME="fastapi-hello"
         IMAGE_TAG=${{ github.sha }}
         docker build -t $IMAGE_NAME:$IMAGE_TAG .
         docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest
         echo "✅ Image built: $IMAGE_NAME:$IMAGE_TAG"
 
-    - name: Load image into Minikube
+    - name: 📦 Load image into Minikube
       run: |
         IMAGE_NAME="fastapi-hello"
         IMAGE_TAG=${{ github.sha }}
         echo "📦 Loading image into Minikube..."
         minikube image load $IMAGE_NAME:$IMAGE_TAG
 
-    - name: Deploy to Kubernetes
+    - name: 🚀 Deploy to Kubernetes
       run: |
+        cd $GITHUB_WORKSPACE
+        echo "📂 Current directory:"
+        pwd
+        echo "📄 Files:"
+        ls -R k8s/
+
         NAMESPACE=fastapi
         DEPLOYMENT=fastapi-deployment
         CONTAINER=fastapi
         IMAGE="fastapi-hello:${{ github.sha }}"
 
+        echo "🚀 Ensuring namespace exists..."
+        kubectl get ns $NAMESPACE || kubectl create ns $NAMESPACE
+
+        echo "📦 Applying manifests..."
+        kubectl apply -f k8s/ -n $NAMESPACE
+
         echo "🚀 Updating deployment with image: $IMAGE"
-        kubectl -n $NAMESPACE set image deployment/$DEPLOYMENT $CONTAINER=$IMAGE || {
-          echo "⚠️ Deployment not found, applying manifests instead..."
-          kubectl -n $NAMESPACE apply -f k8s/
-        }
+        kubectl -n $NAMESPACE set image deployment/$DEPLOYMENT $CONTAINER=$IMAGE --record || true
+        kubectl -n $NAMESPACE rollout status deployment/$DEPLOYMENT --timeout=120s || true
 
-        kubectl -n $NAMESPACE rollout status deployment/$DEPLOYMENT --timeout=120s
-
-    - name: Confirm service availability
+    - name: 🔍 Confirm service availability
       run: |
-        echo "🌐 Checking service in namespace fastapi..."
-        kubectl -n fastapi get svc fastapi-svc -o wide
+        kubectl -n fastapi get all -o wide
