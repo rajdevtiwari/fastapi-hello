@@ -1,6 +1,6 @@
 from httpx import AsyncClient
 import pytest
-from app.main import app
+from main import app
 
 @pytest.mark.asyncio
 async def test_root():
