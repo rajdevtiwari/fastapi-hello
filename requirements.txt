@@ -1,9 +1,7 @@
-fastapi
-uvicorn[standard]
+uvicorn
 pytest
-httpx
 fastapi
 uvicorn
-httpx
+httpx>=0.28
 pytest
 pytest-asyncio
