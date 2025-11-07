@@ -42,17 +42,20 @@ jobs:
       run: pytest -q
 
     # ------------------------------
-    # 5️⃣ Verify kubeconfig (real cluster)
+    # 5️⃣ Verify kubeconfig and Minikube
     # ------------------------------
-    - name: ⚙️ Verify kubeconfig (real cluster)
+    - name: ⚙️ Verify kubeconfig and Minikube
       run: |
-        export KUBECONFIG=/home/ceekh/.kube/config
-        echo "✅ Using kubeconfig from $KUBECONFIG"
-        if [ ! -f "$KUBECONFIG" ]; then
+        echo "KUBECONFIG=$HOME/.kube/config"
+        if [ ! -f "$HOME/.kube/config" ]; then
           echo "❌ kubeconfig not found!"
           exit 1
         fi
-        kubectl config current-context
+        echo "✅ kubeconfig found."
+        kubectl config current-context || true
+        echo "Checking Minikube status..."
+        minikube status || echo "⚠️ Minikube not running; trying to start..."
+        minikube start --driver=docker || true
         kubectl get nodes
 
     # ------------------------------
@@ -68,7 +71,17 @@ jobs:
         echo "✅ Image built: $IMAGE_NAME:$IMAGE_TAG"
 
     # ------------------------------
-    # 7️⃣ Deploy to Kubernetes
+    # 7️⃣ Load Docker image into Minikube
+    # ------------------------------
+    - name: 📦 Load image into Minikube
+      run: |
+        IMAGE_NAME="fastapi-hello"
+        IMAGE_TAG=${{ github.sha }}
+        echo "📦 Loading image into Minikube..."
+        minikube image load $IMAGE_NAME:$IMAGE_TAG
+
+    # ------------------------------
+    # 8️⃣ Deploy to Kubernetes
     # ------------------------------
     - name: 🚀 Deploy to Kubernetes
       run: |
@@ -97,7 +110,7 @@ jobs:
         kubectl -n $NAMESPACE rollout status deployment/$DEPLOYMENT --timeout=120s || true
 
     # ------------------------------
-    # 8️⃣ Confirm service and print access URL
+    # 9️⃣ Confirm service and print access URL
     # ------------------------------
     - name: 🔍 Confirm service availability
       run: |
@@ -107,6 +120,6 @@ jobs:
 
         echo "🌐 Checking NodePort URL..."
         NODE_PORT=$(kubectl -n $NAMESPACE get svc fastapi-svc -o jsonpath='{.spec.ports[0].nodePort}')
-        NODE_IP=$(hostname -I | awk '{print $1}')
+        CLUSTER_IP=$(minikube ip)
         echo "✅ Your app should be available at:"
-        echo "👉 http://$NODE_IP:$NODE_PORT"
+        echo "👉 http://$CLUSTER_IP:$NODE_PORT"
